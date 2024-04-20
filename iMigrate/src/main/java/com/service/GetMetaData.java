@@ -7,6 +7,7 @@ import java.sql.DatabaseMetaData;
 import java.sql.JDBCType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -41,7 +42,42 @@ public class GetMetaData {
 	private DataSource dataSource;
 	
 	private static Logger log = LoggerFactory.getLogger(GetMetaData.class);
-	
+
+	public void getTriggers() {
+		try {
+			Connection connection = dataSource.getConnection();
+			Statement stmt = connection.createStatement();
+
+			String query = "SELECT name AS TriggerName, OBJECT_NAME(parent_id) AS TableName, type_desc AS TriggerType, "
+					+ "create_date AS CreationDate, modify_date AS LastModifiedDate, OBJECT_DEFINITION(object_id) AS TriggerDefinition "
+					+ "FROM sys.triggers";
+			ResultSet resultSet = stmt.executeQuery(query);
+
+			while (resultSet.next()) {
+				String triggerName = resultSet.getString("TriggerName");
+				String tableName = resultSet.getString("TableName");
+				String triggerType = resultSet.getString("TriggerType");
+				String creationDate = resultSet.getString("CreationDate");
+				String lastModifiedDate = resultSet.getString("LastModifiedDate");
+				String triggerDefinition = resultSet.getString("TriggerDefinition");
+
+				System.out.println("Trigger Name: " + triggerName);
+				System.out.println("Table Name: " + tableName);
+				System.out.println("Trigger Type: " + triggerType);
+				System.out.println("Creation Date: " + creationDate);
+				System.out.println("Last Modified Date: " + lastModifiedDate);
+				System.out.println("Trigger Definition:\n" + triggerDefinition);
+				System.out.println("------------------------------------------");
+			}
+
+			stmt.close();
+			connection.close();
+		} catch (SQLException e) {
+			
+			e.printStackTrace(); 
+		}
+	}
+
 	public void printMetaData() {
 		
 		Metadata metadata = MetadataExtractorIntegrator.INSTANCE.getMetadata();
@@ -85,7 +121,7 @@ public class GetMetaData {
 			DatabaseMetaData metaData = connection.getMetaData();
 
 			//ResultSet resultSet = metaData.getTables(null, null, null, new String[]{"TABLE","VIEW", "GLOBAL TEMPORARY","LOCAL TEMPORARY", "ALIAS", "SYNONYM"});
-			ResultSet resultSet = metaData.getTables(null, "dbo", null, new String[]{"TABLE"});
+			ResultSet resultSet = metaData.getTables(null, "dbo", null, new String[]{"TABLE","VIEW"});
 			Map<String, Tables> listtables = new LinkedHashMap();
 			while(resultSet.next()){
 				Tables tables = Tables.builder().tableName(resultSet.getString("TABLE_NAME"))

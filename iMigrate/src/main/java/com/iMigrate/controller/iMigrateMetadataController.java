@@ -31,6 +31,7 @@ public class iMigrateMetadataController {
 //           }
         	metaData.printMetaData();
         	metaData.printTableData();
+        	metaData.getTriggers();
 //        	Main.main1();
         } catch (Exception e) {
            e.printStackTrace();

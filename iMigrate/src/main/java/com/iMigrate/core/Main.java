@@ -153,7 +153,7 @@ public class Main {
 		properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
 		properties.put("hibernate.connection.driver_class", "org.postgresql.Driver");
 		properties.put("hibernate.connection.username", "postgres");
-		properties.put("hibernate.connection.password", "postgres");
+		properties.put("hibernate.connection.password", "Root123$");
 		properties.put("hibernate.connection.url", "jdbc:postgresql://localhost:5432/iMigratedb");
 		properties.put("hibernate.hbm2ddl.auto", "create");
 		properties.put("hibernate.show_sql", true);
