@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -28,6 +29,8 @@ import com.iMigrate.models.Tables;
 
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Query;
 import jakarta.persistence.SharedCacheMode;
 import jakarta.persistence.ValidationMode;
 import jakarta.persistence.spi.ClassTransformer;
@@ -44,102 +47,159 @@ import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
  *
  */
 public class Main {
+	public static String entityPkgPrefix =  "com.iMigrate.models.";
+	public static EntityManager em = null;
 	public static Map<String, Class<?>> map(List<Columns> column) {
 		Map<String, Class<?>> fields = new HashMap<>();
-		//TODO MSSQL to PostgreSQL table columns
-		fields.put("firstName", String.class);
-		fields.put("lastName", String.class);
-		fields.put("birthDate", Date.class);
-		fields.put("image", byte[].class);
-		fields.put("version", Long.class);
-
+		for (Columns columns : column) {
+			if (columns.getColumnDataType().equals("BIGINT")) {
+				fields.put(columns.getColumnName(), Long.class);
+			} else if (columns.getColumnDataType().equals("NCHAR")) {
+				fields.put(columns.getColumnName(), String.class);
+			} else if (columns.getColumnDataType().equals("NUMERIC")) {
+				fields.put(columns.getColumnName(), Integer.class);
+			} else if (columns.getColumnDataType().equals("DATE")) {
+				fields.put(columns.getColumnName(), Date.class);
+			} else {
+				fields.put(columns.getColumnName(), String.class);
+			}
+		}
 		return fields;
 	}
-	public static void main1(Tables tables)
+
+//	public static void prepareCoreEntities(Map<String, Tables> listTables) throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+//		for (Map.Entry<String, Tables> entry : listTables.entrySet()) {
+//			System.out.println("prepareCoreEntities, Table : "+entry.getKey());
+//			Tables table = entry.getValue();
+//			createJPAEntity(table);	
+//		}
+//		
+//	}
+	
+	public static void createEntityManger(List<DynamicEntity> fullClassNames) {
+		if(em == null) {
+			em = createEMF(fullClassNames);	
+			//callEmCalls();
+		
+		}
+	}
+	
+	public static void callEmCalls() {
+		em.getTransaction().begin();
+		/*Query query = em.createNativeQuery("SELECT 1 FROM "+tables.getTableName());
+		try {
+			query.getSingleResult();
+		} catch (Exception e) {
+			// TODO: handle exception
+		}*/
+		
+		//person = em.merge(person);
+		em.flush();
+		em.getTransaction().commit();
+		//Class cls =Class.forName(entityPkgPrefix+ tables.getTableName());
+		//System.out.print("Class "+cls+" loaded");
+			//DynamicEntity beanFromDB = (DynamicEntity) em.find(Class.forName("com.iMigrate.models" + tables.getTableName()), id);
+			//System.out.println(beanFromDB.get("firstName"));
+		
+	}
+
+	public static DynamicEntity createJPAEntity(Tables tables)
 			throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException,
 			InvocationTargetException, NoSuchMethodException, SecurityException {
 		List<Columns> columns = tables.getColumns();
-		createEntity(tables, "com.iMigrate.models"+tables.getTableName(), map(columns));
-		DynamicEntity person = (DynamicEntity) Class.forName("com.iMigrate.models"+tables.getTableName()).getConstructor()
-				.newInstance();
-//		person.set("firstName", "Habib");
-//		person.set("lastName", "Zerai");
-//		person.set("birthDate", new Date());
-//		person.set("image", new byte[] { 1, 2, 3 });
-//		person.set("version", 0L);
-
-		EntityManager em = createEMF(person);
-		em.getTransaction().begin();
-		person = em.merge(person);
-		em.flush();
-		em.getTransaction().commit();
-//		Long id = (Long) person.get("id");
-//
-//		DynamicEntity beanFromDB = (DynamicEntity) em.find(Class.forName("com.hzerai.dynamicjpa.models.Person"), id);
-//		//System.out.println(beanFromDB.get("firstName"));
+		createEntity(tables, entityPkgPrefix + tables.getTableName(), tables.getColumns());
+		DynamicEntity etnity = (DynamicEntity) Class.forName(entityPkgPrefix + tables.getTableName())
+				.getConstructor().newInstance();
+		return etnity;
+		
 	}
 
-	private static Class<?> createEntity(Tables tables, String className, Map<String, Class<?>> fields) throws ClassNotFoundException {
-
-		var builder = new ByteBuddy().subclass(DynamicEntity.class)
-				.annotateType(AnnotationDescription.Builder.ofType(jakarta.persistence.Entity.class).build(),
-						AnnotationDescription.Builder.ofType(jakarta.persistence.Table.class).define("name", tables.getTableName()) 
-						.build());
-		if(tables.getPrimaryKeys().size() > 0 && tables.getForeignKeys().size() == 0) {
-			for (Map.Entry<String, Class<?>> e : fields.entrySet()) {
-				builder = builder.defineField(e.getKey(), e.getValue())
-						.annotateField(AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build());
-			}
-			PrimaryKeys primaryKeys = tables.getPrimaryKeys().get(0);
-			Class clazz = fields.get(primaryKeys.getPrimaryKeyColName());
-			builder = builder.defineField(primaryKeys.getPrimaryKeyColName(), clazz).annotateField(
-					AnnotationDescription.Builder.ofType(jakarta.persistence.Id.class).build(),
-					AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build(),
-					AnnotationDescription.Builder.ofType(jakarta.persistence.GeneratedValue.class).build());
-			Unloaded<?> generatedClass = builder.name(className).make();
-			generatedClass.load(Main.class.getClassLoader(), ClassLoadingStrategy.Default.INJECTION);
-			
-
-		}
+	private static Class<?> createEntity(Tables tables, String className, List<Columns> columns)
+			throws ClassNotFoundException {
 		
-		if(tables.getForeignKeys().size() > 0) {
+		Map<String, Class<?>> fields = map(columns);
+		var builder = new ByteBuddy().subclass(DynamicEntity.class).annotateType(
+				AnnotationDescription.Builder.ofType(jakarta.persistence.Entity.class).build(),
+				AnnotationDescription.Builder.ofType(jakarta.persistence.Table.class)
+						.define("name", tables.getTableName()).build());
+		//if ((tables.getPrimaryKeys() != null && tables.getPrimaryKeys().size() > 0)
+			//	&& tables.getForeignKeys().size() == 0) {
+			Map<String, PrimaryKeys> mapPK = tables.getPrimaryKeys().stream()
+					.collect(Collectors.toMap(PrimaryKeys::getPrimaryKeyColName, Function.identity()));
 			Map<String, ForeignKeys> fkColumns = tables.getForeignKeys().stream()
-					.collect(Collectors 
-	                              .toMap(ForeignKeys::getFkColumnName, Function.identity())); 
+					.collect(Collectors.toMap(ForeignKeys::getFkColumnName, Function.identity()));
 			for (Map.Entry<String, Class<?>> e : fields.entrySet()) {
-				
-				if(fkColumns.containsKey(e.getKey())) {
+				// Skip primarykey column
+				//Columns idColumn = mapColumns.get(e.getKey());
+				if (mapPK.containsKey(e.getKey())) {
+					continue;
+				} else if (fkColumns.containsKey(e.getKey())) {
 					ForeignKeys fks = fkColumns.get(e.getKey());
-					//@ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.REFRESH, optional = false)
-				    //@JoinColumn(name="TCONC_CONTRACT_ID_SK", referencedColumnName = "pkColumnName", nullable=false, updatable = false)
-					//private Department department;
-					Class clazz = Class.forName("com.iMigrate.models"+fks.getPkTableName());
-					builder = builder.defineField(fks.getPkTableName(), clazz)
-							.annotateField(AnnotationDescription.Builder.ofType(jakarta.persistence.JoinColumns.class)
-									.define("name", fks.getPkColumnName())
-									.define("referencedColumnName", fks.getFkColumnName())
-									.build());
+					// @ManyToOne(fetch = FetchType.LAZY, cascade = CascadeType.REFRESH, optional =
+					// false)
+					// @JoinColumn(name="TCONC_CONTRACT_ID_SK", referencedColumnName =
+					// "pkColumnName", nullable=false, updatable = false)
+					// private Department department;
+					Class clazz = Class.forName(entityPkgPrefix + fks.getPkTableName());
+					builder = builder.defineField(fks.getPkTableName(), clazz).annotateField(
+							AnnotationDescription.Builder.ofType(jakarta.persistence.JoinColumn.class)
+									.define("name", fks.getFkColumnName())
+									.define("referencedColumnName", fks.getPkColumnName()).build(),
+
+							AnnotationDescription.Builder.ofType(jakarta.persistence.ManyToOne.class)
+									.define("fetch", FetchType.EAGER)
+									// .define("cascade", CascadeType.REFRESH)
+									.define("optional", false).build()
+									);
 				} else {
 					builder = builder.defineField(e.getKey(), e.getValue())
 							.annotateField(AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build());
-						
 				}
 				
 			}
-		
-		
-		
-			PrimaryKeys primaryKeys = tables.getPrimaryKeys().get(0);
-			Class clazz = fields.get(primaryKeys.getPrimaryKeyColName());
-			builder = builder.defineField(primaryKeys.getPrimaryKeyColName(), clazz).annotateField(
-					AnnotationDescription.Builder.ofType(jakarta.persistence.Id.class).build(),
-					AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build(),
-					AnnotationDescription.Builder.ofType(jakarta.persistence.GeneratedValue.class).build());
+			if (tables.getPrimaryKeys().size() > 0) {
+				PrimaryKeys primaryKeys = tables.getPrimaryKeys().get(0);
+				Class clazz = fields.get(primaryKeys.getPrimaryKeyColName());
+				builder = builder.defineField(primaryKeys.getPrimaryKeyColName(), clazz).annotateField(
+						AnnotationDescription.Builder.ofType(jakarta.persistence.Id.class).build(),
+						AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build(),
+						AnnotationDescription.Builder.ofType(jakarta.persistence.GeneratedValue.class).build());
+			}
+			//Load the entity
 			Unloaded<?> generatedClass = builder.name(className).make();
 			generatedClass.load(Main.class.getClassLoader(), ClassLoadingStrategy.Default.INJECTION);
-			
 
-		}
+		/*}
+
+		if (tables.getForeignKeys() != null && tables.getForeignKeys().size() > 0) {
+			Map<String, ForeignKeys> fkColumns = tables.getForeignKeys().stream()
+					.collect(Collectors.toMap(ForeignKeys::getFkColumnName, Function.identity()));
+			for (Map.Entry<String, Class<?>> e : fields.entrySet()) {
+
+				if (fkColumns.containsKey(e.getKey())) {
+					
+
+				} else {
+					builder = builder.defineField(e.getKey(), e.getValue()).annotateField(
+							AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build());
+
+				}
+
+			}
+
+			if (tables.getPrimaryKeys() != null && tables.getPrimaryKeys().size() > 0) {
+				PrimaryKeys primaryKeys = tables.getPrimaryKeys().get(0);
+				Class clazz = fields.get(primaryKeys.getPrimaryKeyColName());
+				builder = builder.defineField(primaryKeys.getPrimaryKeyColName(), clazz).annotateField(
+						AnnotationDescription.Builder.ofType(jakarta.persistence.Id.class).build(),
+						AnnotationDescription.Builder.ofType(jakarta.persistence.Column.class).build(),
+						AnnotationDescription.Builder.ofType(jakarta.persistence.GeneratedValue.class).build());
+				
+			}
+			Unloaded<?> generatedClass = builder.name(className).make();
+			generatedClass.load(Main.class.getClassLoader(), ClassLoadingStrategy.Default.INJECTION);
+
+		}*/
 		try {
 			Class<?> cls = Class.forName(className);
 			return cls;
@@ -153,7 +213,7 @@ public class Main {
 		properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
 		properties.put("hibernate.connection.driver_class", "org.postgresql.Driver");
 		properties.put("hibernate.connection.username", "postgres");
-		properties.put("hibernate.connection.password", "Root123$");
+		properties.put("hibernate.connection.password", "postgres");
 		properties.put("hibernate.connection.url", "jdbc:postgresql://localhost:5432/iMigratedb");
 		properties.put("hibernate.hbm2ddl.auto", "create");
 		properties.put("hibernate.show_sql", true);
@@ -174,7 +234,15 @@ public class Main {
 			public List<String> getManagedClassNames() {
 				List<String> list = new ArrayList<>();
 				for (Object entity : entities) {
-					list.add(entity.getClass().getName());
+					if(entity.getClass().getName().equals("java.util.ArrayList")) {
+						ArrayList<Object> listArr = (ArrayList<Object>)entity;
+						for (Object object : listArr) {
+							list.add(object.getClass().getName());
+						}
+					}else {
+						list.add(entity.getClass().getName());
+					}
+					
 				}
 				return list;
 			}

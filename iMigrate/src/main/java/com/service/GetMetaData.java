@@ -7,7 +7,6 @@ import java.sql.DatabaseMetaData;
 import java.sql.JDBCType;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -28,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.iMigrate.core.Main;
+import com.iMigrate.core.Main.DynamicEntity;
 import com.iMigrate.models.Columns;
 import com.iMigrate.models.ForeignKeys;
 import com.iMigrate.models.Indexes;
@@ -42,42 +42,7 @@ public class GetMetaData {
 	private DataSource dataSource;
 	
 	private static Logger log = LoggerFactory.getLogger(GetMetaData.class);
-
-	public void getTriggers() {
-		try {
-			Connection connection = dataSource.getConnection();
-			Statement stmt = connection.createStatement();
-
-			String query = "SELECT name AS TriggerName, OBJECT_NAME(parent_id) AS TableName, type_desc AS TriggerType, "
-					+ "create_date AS CreationDate, modify_date AS LastModifiedDate, OBJECT_DEFINITION(object_id) AS TriggerDefinition "
-					+ "FROM sys.triggers";
-			ResultSet resultSet = stmt.executeQuery(query);
-
-			while (resultSet.next()) {
-				String triggerName = resultSet.getString("TriggerName");
-				String tableName = resultSet.getString("TableName");
-				String triggerType = resultSet.getString("TriggerType");
-				String creationDate = resultSet.getString("CreationDate");
-				String lastModifiedDate = resultSet.getString("LastModifiedDate");
-				String triggerDefinition = resultSet.getString("TriggerDefinition");
-
-				System.out.println("Trigger Name: " + triggerName);
-				System.out.println("Table Name: " + tableName);
-				System.out.println("Trigger Type: " + triggerType);
-				System.out.println("Creation Date: " + creationDate);
-				System.out.println("Last Modified Date: " + lastModifiedDate);
-				System.out.println("Trigger Definition:\n" + triggerDefinition);
-				System.out.println("------------------------------------------");
-			}
-
-			stmt.close();
-			connection.close();
-		} catch (SQLException e) {
-			
-			e.printStackTrace(); 
-		}
-	}
-
+	
 	public void printMetaData() {
 		
 		Metadata metadata = MetadataExtractorIntegrator.INSTANCE.getMetadata();
@@ -114,14 +79,14 @@ public class GetMetaData {
 	}
 
 
-	public void printTableData(){
+	public void printTableData() throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException{
 
         try {
 			Connection connection = dataSource.getConnection();
 			DatabaseMetaData metaData = connection.getMetaData();
 
 			//ResultSet resultSet = metaData.getTables(null, null, null, new String[]{"TABLE","VIEW", "GLOBAL TEMPORARY","LOCAL TEMPORARY", "ALIAS", "SYNONYM"});
-			ResultSet resultSet = metaData.getTables(null, "dbo", null, new String[]{"TABLE","VIEW"});
+			ResultSet resultSet = metaData.getTables(null, "dbo", null, new String[]{"TABLE"});
 			Map<String, Tables> listtables = new LinkedHashMap();
 			while(resultSet.next()){
 				Tables tables = Tables.builder().tableName(resultSet.getString("TABLE_NAME"))
@@ -208,37 +173,54 @@ public class GetMetaData {
 				}
 				//Call object creation
 			}
-
+			List<DynamicEntity> listEntities = new ArrayList<>();
+			prepateEntity(listtables, doneTables, listEntities);
+			Main.createEntityManger(listEntities);
+			
+			
 		} catch (SQLException e) {
             throw new RuntimeException(e);
         }
 
     }
 	
-	public void prepateEntity(Map<String, Tables> listtables, List<String> doneTables) {
+	public List<DynamicEntity> getEnitiyClassNames(Map<String, Tables> listtables) throws InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException, ClassNotFoundException{
+		List<DynamicEntity> listFullClazzName= new ArrayList<>();
+		for (Map.Entry<String, Tables> entry : listtables.entrySet()) {
+			String tableName = entry.getKey();
+			DynamicEntity dynamicEntity = (DynamicEntity) Class.forName(Main.entityPkgPrefix + tableName)
+					.getConstructor().newInstance();
+			listFullClazzName.add(dynamicEntity);
+		}
+		return listFullClazzName;
+		
+	}
+	
+	public void prepateEntity(Map<String, Tables> listtables, List<String> doneTables, List<DynamicEntity> listEntities) throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
+		if(listtables == null || listtables.size() ==0) {
+			System.out.println("No tables");
+		}
 		for (Map.Entry<String, Tables> entry : listtables.entrySet()) {
 			Tables tables= entry.getValue();
-			createEntity(tables, doneTables);
+			createEntity(tables, doneTables, listEntities);
 		}
 	}
 	
-	public void createEntity(Tables tables, List<String> doneTables) {		
+	public void createEntity(Tables tables, List<String> doneTables, List<DynamicEntity> listEntities) throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {		
 		if(doneTables.contains(tables.getTableName())){
 			return;
-		} else if(tables.getParentKeyTables().size()>0) {
+		} else if(tables.getParentKeyTables()!=null && tables.getParentKeyTables().size()>0) {
 			for(Tables parentTable : tables.getParentKeyTables()) {
-				createEntity(parentTable, doneTables);
+				createEntity(parentTable, doneTables, listEntities);
+				
 			}
 		}
-		//Call object creation
+		DynamicEntity entity = Main.createJPAEntity(tables);
+		listEntities.add(entity);
 		doneTables.add(tables.getTableName());
 	}
 //Employee1
 //Employee -> Department
 //Department
-	
-	public void createJPAEntity(Tables tables) throws InstantiationException, IllegalAccessException, ClassNotFoundException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, SecurityException {
-		
-		Main.main1(tables);
-	}
+
 }
