@@ -9,4 +9,5 @@ public class Indexes {
 
 	private String indexName;
 	private String type;
+	private String columnName;
 }
